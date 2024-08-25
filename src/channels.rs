@@ -29,18 +29,18 @@ pub struct AddChannel {
     suppress: Option<bool>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Default)]
 pub struct ChannelData {
+    #[serde(skip_serializing_if = "Option::is_none")]
     channel_id: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     channel_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     guild_id: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     guild_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     suppress: Option<bool>,
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct ChannelID {
-    channel_id: i64,
 }
 
 pub async fn add_channel(
@@ -84,8 +84,8 @@ pub async fn add_channel(
 
 pub async fn get_channel(
     State(pool): State<Arc<Pool>>,
-    Path(ChannelID { channel_id }): Path<ChannelID>,
-) -> Result<(), (StatusCode, Json<Message>)> {
+    Path(channel_id): Path<i64>,
+) -> Result<Json<ChannelData>, (StatusCode, Json<Message>)> {
     let pool = Arc::clone(&pool);
     let con = pool
         .get()
@@ -93,7 +93,7 @@ pub async fn get_channel(
         .map_err(|err| internal_error(Box::new(err)))?;
 
     let statement = con
-        .prepare("SELECT * FROM channels WHERE channel_id = $1")
+        .prepare("SELECT suppress FROM channels WHERE channel_id = $1")
         .await
         .map_err(|err| {
             let db_error = DbError::clone(err.as_db_error().unwrap());
@@ -101,26 +101,25 @@ pub async fn get_channel(
         })?;
 
     let result = con
-        .query_opt(&statement, &[&channel_id])
+        .query_one(
+            &statement,
+            &[&channel_id]
+        )
         .await
         .map_err(|err| internal_error(Box::new(err)))?;
 
-    match result {
-        Some(row) => {
-            for i in 0..row.len() {
-                row.try_get()
-            }
-        }
-        None => return Ok(()),
+    let data = ChannelData {
+        suppress: result.get("suppress"),
+        ..Default::default()
     };
 
-    Ok(())
+    Ok(Json(data))
 }
 
 pub async fn update_channel(
     State(pool): State<Arc<Pool>>,
-    Path(ChannelID { channel_id }): Path<ChannelID>,
-    Json(payload): Json<UpdateChannel>,
+    Path(channel_id): Path<i64>,
+    Json(payload): Json<ChannelData>,
 ) -> Result<StatusCode, (StatusCode, Json<Message>)> {
     let pool = Arc::clone(&pool);
     let con = pool
@@ -155,7 +154,7 @@ pub async fn update_channel(
 
 pub async fn delete_channel(
     State(pool): State<Arc<Pool>>,
-    Path(ChannelID { channel_id }): Path<ChannelID>,
+    Path(channel_id): Path<i64>,
 ) -> Result<StatusCode, (StatusCode, Json<Message>)> {
     let pool = Arc::clone(&pool);
     let con = pool
@@ -182,9 +181,9 @@ pub async fn delete_channel(
     Ok(StatusCode::OK)
 }
 
-// -------------------------------
+// ------------------------------------------------
 // Testing
-// -------------------------------
+// ------------------------------------------------
 
 #[cfg(test)]
 mod tests {
@@ -196,8 +195,9 @@ mod tests {
         routing::{delete, get, post, put},
         Router,
     };
+    use http_body_util::BodyExt;
     use rand::{distributions::Alphanumeric, random, thread_rng, Rng};
-    use serde_json::to_string;
+    use serde_json::{json, to_string, Value};
     use tower::{Service, ServiceExt};
 
     async fn init() -> Router {
@@ -221,6 +221,7 @@ mod tests {
         let arc_pool = Arc::new(pool);
         Router::new()
             .route("/channel", post(channels::add_channel))
+            .route("/channel/:channelid", get(channels::get_channel))
             .route("/channel/:channelid", put(channels::update_channel))
             .route("/channel/:channelid", delete(channels::delete_channel))
             .with_state(arc_pool)
@@ -264,6 +265,8 @@ mod tests {
             .unwrap();
 
         assert_eq!(response.status(), StatusCode::CREATED);
+        let body = response.into_body().collect().await.unwrap().to_bytes();
+        assert!(body.is_empty());
     }
 
     #[tokio::test]
@@ -286,21 +289,68 @@ mod tests {
             .unwrap();
 
         assert_eq!(response.status(), StatusCode::CREATED);
+        let body = response.into_body().collect().await.unwrap().to_bytes();
+        assert!(body.is_empty());
 
-        let request1 = Request::builder()
+        let request = Request::builder()
             .method("POST")
             .uri("/channel")
             .header("Content-Type", "application/json")
             .body(Body::from(json_string.clone()))
             .unwrap();
 
-        let response1 = ServiceExt::<Request<Body>>::ready(&mut app)
+        let response = ServiceExt::<Request<Body>>::ready(&mut app)
             .await
             .unwrap()
-            .call(request1)
+            .call(request)
             .await
             .unwrap();
 
-        assert_eq!(response1.status(), StatusCode::CONFLICT);
+        assert_eq!(response.status(), StatusCode::CONFLICT);
+        let body = response.into_body().collect().await.unwrap().to_bytes();
+        assert!(!body.is_empty());
+    }
+
+    #[tokio::test]
+    async fn get_channel() {
+        let mut app = init().await.into_service();
+        let data = rng_add_channel();
+        let json_string = to_string(&data).unwrap();
+        let request = Request::builder()
+            .method("POST")
+            .uri("/channel")
+            .header("Content-Type", "application/json")
+            .body(Body::from(json_string.clone()))
+            .unwrap();
+
+        let response = ServiceExt::<Request<Body>>::ready(&mut app)
+            .await
+            .unwrap()
+            .call(request)
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::CREATED);
+        let body = response.into_body().collect().await.unwrap().to_bytes();
+        assert!(body.is_empty());
+
+        let request = Request::builder()
+            .method("GET")
+            .uri(format!("/channel/{}", data.channel_id))
+            .header("Content-Type", "application/json")
+            .body(Body::from(json_string.clone()))
+            .unwrap();
+
+        let response = ServiceExt::<Request<Body>>::ready(&mut app)
+            .await
+            .unwrap()
+            .call(request)
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = response.into_body().collect().await.unwrap().to_bytes();
+        let body: Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(body, json!({"suppress": false}))
     }
 }

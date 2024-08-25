@@ -12,18 +12,18 @@ use std::{env, sync::Arc};
 use tokio_postgres::NoTls;
 
 #[derive(Serialize, Default)]
-struct Message<T> {
+struct Message {
     message: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    data: Box<T>,
+    data: Option<Vec<String>>,
 }
 
 #[tokio::main]
 async fn main() {
-    let host = env::var("HOST").expect("");
-    let db_name = env::var("DBNAME").expect("");
-    let user = env::var("USER").expect("");
-    let password = env::var("PASSWORD").expect("");
+    let host = env::var("HOST").expect("HOST ENV is missing");
+    let db_name = env::var("DBNAME").expect("DBNAME ENV is missing");
+    let user = env::var("USER").expect("USER ENV is missing");
+    let password = env::var("PASSWORD").expect("PASSWORD ENV is Missing");
 
     let mut config = Config::new();
     config.host = Some(host);
@@ -36,7 +36,7 @@ async fn main() {
 
     let pool = config
         .create_pool(Some(Runtime::Tokio1), NoTls)
-        .expect("Couldn't create conneciton pool");
+        .expect("Couldn't create connection pool");
 
     let arc_pool = Arc::new(pool);
 
