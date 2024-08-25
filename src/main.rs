@@ -1,4 +1,4 @@
-mod channels;
+mod channel;
 mod util;
 // mod anilist;
 
@@ -22,13 +22,13 @@ struct Message {
 async fn main() {
     let host = env::var("HOST").expect("HOST ENV is missing");
     let db_name = env::var("DBNAME").expect("DBNAME ENV is missing");
-    let user = env::var("USER").expect("USER ENV is missing");
+    let username = env::var("USERNAME").expect("USERNAME ENV is missing");
     let password = env::var("PASSWORD").expect("PASSWORD ENV is Missing");
 
     let mut config = Config::new();
     config.host = Some(host);
     config.dbname = Some(db_name);
-    config.user = Some(user);
+    config.user = Some(username);
     config.password = Some(password);
     config.manager = Some(ManagerConfig {
         recycling_method: RecyclingMethod::Fast,
@@ -42,10 +42,10 @@ async fn main() {
 
     tracing_subscriber::fmt::init();
     let app = Router::new()
-        .route("/channel", post(channels::add_channel))
-        .route("/channel/:channelid", get(channels::get_channel))
-        .route("/channel/:channelid", put(channels::update_channel))
-        .route("/channel/:channelid", delete(channels::delete_channel))
+        .route("/channel", post(channel::add_channel))
+        .route("/channel/:channelid", get(channel::get_channel))
+        .route("/channel/:channelid", put(channel::update_channel))
+        .route("/channel/:channelid", delete(channel::delete_channel))
         .with_state(arc_pool);
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:80")

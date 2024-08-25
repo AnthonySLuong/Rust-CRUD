@@ -188,7 +188,7 @@ pub async fn delete_channel(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{channels, tests::pool};
+    use crate::{channel, tests::pool};
     use axum::{
         body::Body,
         http::{Request, StatusCode},
@@ -220,10 +220,10 @@ mod tests {
 
         let arc_pool = Arc::new(pool);
         Router::new()
-            .route("/channel", post(channels::add_channel))
-            .route("/channel/:channelid", get(channels::get_channel))
-            .route("/channel/:channelid", put(channels::update_channel))
-            .route("/channel/:channelid", delete(channels::delete_channel))
+            .route("/channel", post(channel::add_channel))
+            .route("/channel/:channelid", get(channel::get_channel))
+            .route("/channel/:channelid", put(channel::update_channel))
+            .route("/channel/:channelid", delete(channel::delete_channel))
             .with_state(arc_pool)
     }
 
