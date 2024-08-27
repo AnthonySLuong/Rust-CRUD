@@ -42,10 +42,10 @@ async fn main() {
 
     tracing_subscriber::fmt::init();
     let app = Router::new()
-        .route("/channel", post(channel::add_channel))
-        .route("/channel/:channelid", get(channel::get_channel))
-        .route("/channel/:channelid", put(channel::update_channel))
-        .route("/channel/:channelid", delete(channel::delete_channel))
+        .route("/channel", post(channel::add))
+        .route("/channel/:channelid", get(channel::get))
+        .route("/channel/:channelid", put(channel::update))
+        .route("/channel/:channelid", delete(channel::delete))
         .with_state(arc_pool);
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:80")
