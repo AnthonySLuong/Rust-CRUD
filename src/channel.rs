@@ -103,7 +103,14 @@ pub async fn get(
     let result = con
         .query_one(&statement, &[&channel_id])
         .await
-        .map_err(|err| internal_error(Box::new(err)))?;
+        .map_err(|_| {
+            let msg = Message {
+                message: format!("Could not find {channel_id}"),
+                ..Default::default()
+            };
+            
+            (StatusCode::NOT_FOUND, Json(msg))
+        })?;
 
     let data = Data {
         channel_name: result.get("channel_name"),
@@ -349,6 +356,33 @@ mod tests {
         assert_eq!(
             body,
             json!({"channel_name": data.channel_name, "guild_id": data.guild_id, "guild_name": data.guild_name, "suppress": false})
+        );
+    }
+
+    #[tokio::test]
+    async fn get_invalid() {
+        let app = init().await;
+        let data = rng_add_channel();
+        let json_string = to_string(&data).unwrap();
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!("/channel/{}", data.channel_id))
+                    .header("Content-Type", "application/json")
+                    .body(Body::from(json_string))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+        let body = response.into_body().collect().await.unwrap().to_bytes();
+        let body: Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(
+            body,
+            json!({"message": format!("Could not find {}", data.channel_id)})
         );
     }
 
